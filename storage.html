@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ApparelEase Inventory Storage</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="inventory-app">
+        <header class="app-header">
+            <div>
+                <p class="tagline">ApparelEase</p>
+                <h1>Family Inventory Storage</h1>
+                <p class="subtext">A friendly family business stock manager for spreadsheet uploads, barcode scanning, check in/out, and easy storage lookup.</p>
+            </div>
+            <div class="header-actions">
+                <a class="btn ghost" href="index.html">Back to Scanner</a>
+            </div>
+        </header>
+
+        <section class="upload-panel card">
+            <div class="upload-header">
+                <div>
+                    <h2>Upload Excel / CSV</h2>
+                    <p class="muted">Import family stock from a spreadsheet or CSV file to keep your storage data ready.</p>
+                </div>
+                <button class="btn primary" id="uploadBtn">Choose File</button>
+                <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            <div class="upload-info-grid">
+                <div>
+                    <p class="muted">Uploaded SKUs</p>
+                    <h3 id="loadedSkuCount">0</h3>
+                </div>
+                <div>
+                    <p class="muted">Rows processed</p>
+                    <h3 id="loadedRows">0</h3>
+                </div>
+                <div>
+                    <p class="muted">Upload status</p>
+                    <h3 id="uploadStatus">Waiting for file</h3>
+                </div>
+            </div>
+        </section>
+
+        <section class="storage-panel card">
+            <div class="review-header">
+                <div>
+                    <h2>Storage Manager</h2>
+                    <p class="muted">Filter, add, check in, and check out stock for your family business.</p>
+                </div>
+                <div class="actions">
+                    <div class="storage-mode-row">
+                        <button class="btn secondary mode-button active" id="storageModeAddBtn">Add</button>
+                        <button class="btn secondary mode-button" id="storageModeInBtn">Check In</button>
+                        <button class="btn secondary mode-button" id="storageModeOutBtn">Check Out</button>
+                    </div>
+                    <button class="btn primary" id="addItemBtn">Open Scanner</button>
+                    <button class="btn ghost hidden" id="undoRemoveBtn">Undo Remove</button>
+                    <button class="btn ghost" id="clearStorageBtn">Clear Storage</button>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <label class="filter-label" for="filterInput">Search storage</label>
+                <input id="filterInput" type="text" placeholder="Search by SKU or item name" autocomplete="off">
+                <div class="storage-summary">
+                    <span class="status-pill">Records: <strong id="storageCount">0</strong></span>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>SKU</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Measurement</th>
+                            <th>Serving Size</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="storageTableBody">
+                        <tr>
+                            <td colspan="7" class="muted" style="text-align:center; padding: 24px;">No stored inventory yet. Upload a file or add items to begin.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div id="itemFormSection" class="modal hidden" aria-hidden="true">
+            <div class="modal-dialog">
+                <header>
+                    <div>
+                        <h2 id="itemFormTitle">Add Item</h2>
+                        <p class="muted">Enter item details or scan a barcode first.</p>
+                    </div>
+                    <button type="button" class="close" id="cancelItemBtn">×</button>
+                </header>
+                <form id="itemForm">
+                    <div class="form-grid">
+                        <label class="form-group">
+                            Item Name
+                            <input type="text" id="itemName" required>
+                        </label>
+                        <label class="form-group">
+                            SKU
+                            <input type="text" id="itemSku" required>
+                        </label>
+                        <label class="form-group">
+                            Price
+                            <input type="number" id="itemPrice" step="0.01" min="0" required>
+                        </label>
+                        <label class="form-group">
+                            Quantity
+                            <input type="number" id="itemQuantity" min="0" required>
+                        </label>
+                        <label class="form-group">
+                            Measurement
+                            <input type="text" id="itemMeasurement" placeholder="pieces, kg, liters">
+                        </label>
+                        <label class="form-group">
+                            Serving Size
+                            <input type="text" id="itemServing" placeholder="e.g. 1 piece">
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn ghost" id="closeItemModalBtn">Cancel</button>
+                        <button type="submit" class="btn primary">Save Item</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="scannerModal" class="modal" aria-hidden="true">
+            <div class="modal-dialog">
+                <header>
+                    <div>
+                        <h2>Scan SKU</h2>
+                        <p class="muted">Use your camera to scan a barcode and auto-fill the SKU field.</p>
+                    </div>
+                    <button type="button" class="close" id="closeScannerBtn">×</button>
+                </header>
+                <div class="scanner-body">
+                    <div class="video-wrap">
+                        <video id="scannerModalVideo" playsinline autoplay muted></video>
+                        <div class="scanner-overlay">
+                            <div class="scan-region">
+                                <div class="corner top-left"></div>
+                                <div class="corner top-right"></div>
+                                <div class="corner bottom-left"></div>
+                                <div class="corner bottom-right"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="scanner-status-panel" style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+                        <span class="status-pill" id="scannerModalStatus">Ready to scan</span>
+                        <div style="display:flex; gap:12px; flex-wrap: wrap;">
+                            <button class="btn primary" id="startScannerBtn">Start Scanner</button>
+                            <button class="btn ghost hidden" id="stopScannerBtn">Stop Scanner</button>
+                            <button class="btn secondary" id="manualEntryBtn">Manual Entry</button>
+                        </div>
+                    </div>
+                    <p class="muted" id="detectedSkuText" style="margin-top: 14px;">Scan a barcode to auto-fill the SKU and open the item form.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="storage.js"></script>
+</body>
+</html>

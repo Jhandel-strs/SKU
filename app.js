@@ -1,0 +1,674 @@
+class InventoryApp {
+    constructor() {
+        this.items = {};
+        this.mode = null;
+        this.reviewRecords = [];
+        this.reviewSet = new Set();
+        this.isScanning = false;
+        this.lastDetected = null;
+        this.photoStream = null;
+        this.toastTimeout = null;
+        this.scanHistory = [];
+        this.transactions = [];
+        this.loadElements();
+        this.bindEvents();
+        this.loadItems();
+        this.loadTransactions();
+        this.updateSummary();
+    }
+
+    loadElements() {
+        this.elements = {
+            uploadBtn: document.getElementById('uploadBtn'),
+            fileInput: document.getElementById('fileInput'),
+            uploadStatus: document.getElementById('uploadStatus'),
+            loadedSkuCount: document.getElementById('loadedSkuCount'),
+            loadedRows: document.getElementById('loadedRows'),
+            skuCount: document.getElementById('skuCount'),
+            itemCount: document.getElementById('itemCount'),
+            lastScanned: document.getElementById('lastScanned'),
+            scannerVideo: document.getElementById('scannerVideo'),
+            startScanBtn: document.getElementById('startScanBtn'),
+            stopScanBtn: document.getElementById('stopScanBtn'),
+            capturePhotoBtn: document.getElementById('capturePhotoBtn'),
+            finishReviewBtn: document.getElementById('finishReviewBtn'),
+            clearHistoryBtn: document.getElementById('clearHistoryBtn'),
+            cameraStatus: document.getElementById('cameraStatus'),
+            scanHistory: document.getElementById('scanHistory'),
+            scannerMessage: document.getElementById('scannerMessage'),
+            itemFormSection: document.getElementById('itemFormSection'),
+            itemFormTitle: document.getElementById('itemFormTitle'),
+            itemForm: document.getElementById('itemForm'),
+            itemName: document.getElementById('itemName'),
+            itemSku: document.getElementById('itemSku'),
+            itemPrice: document.getElementById('itemPrice'),
+            itemQuantity: document.getElementById('itemQuantity'),
+            itemMeasurement: document.getElementById('itemMeasurement'),
+            itemServing: document.getElementById('itemServing'),
+            cancelItemBtn: document.getElementById('cancelItemBtn'),
+            reviewSection: document.getElementById('reviewSection'),
+            reviewList: document.getElementById('reviewList'),
+            exportReviewBtn: document.getElementById('exportReviewBtn'),
+            photoSection: document.getElementById('photoSection'),
+            photoVideo: document.getElementById('photoVideo'),
+            photoPreview: document.getElementById('photoPreview'),
+            takePhotoBtn: document.getElementById('takePhotoBtn'),
+            retakePhotoBtn: document.getElementById('retakePhotoBtn'),
+            clearStorageBtn: document.getElementById('clearStorageBtn'),
+            calcQty: document.getElementById('calcQty'),
+            calcPrice: document.getElementById('calcPrice'),
+            calcResult: document.getElementById('calcResult'),
+            calcBtn: document.getElementById('calcBtn'),
+            calcResetBtn: document.getElementById('calcResetBtn'),
+            userIdInput: document.getElementById('userIdInput'),
+            actionTypeSelect: document.getElementById('actionTypeSelect'),
+            transactionNoteInput: document.getElementById('transactionNoteInput'),
+            addTransactionBtn: document.getElementById('addTransactionBtn'),
+            clearTransactionBtn: document.getElementById('clearTransactionBtn'),
+            transactionHistoryList: document.getElementById('transactionHistoryList'),
+            toast: document.getElementById('toast'),
+        };
+    }
+
+    bindEvents() {
+        this.elements.uploadBtn.addEventListener('click', () => this.elements.fileInput.click());
+        this.elements.fileInput.addEventListener('change', (event) => this.handleFileUpload(event));
+        this.elements.startScanBtn.addEventListener('click', () => this.startScanning());
+        this.elements.stopScanBtn.addEventListener('click', () => this.stopScanning());
+        this.elements.finishReviewBtn.addEventListener('click', () => this.finishReview());
+        this.elements.capturePhotoBtn.addEventListener('click', () => this.openCamera());
+        this.elements.takePhotoBtn.addEventListener('click', () => this.capturePhoto());
+        this.elements.retakePhotoBtn.addEventListener('click', () => this.resetPhotoCapture());
+        this.elements.clearHistoryBtn.addEventListener('click', () => this.clearScanHistory());
+        this.elements.cancelItemBtn.addEventListener('click', () => this.hideItemForm());
+        this.elements.itemForm.addEventListener('submit', (event) => this.handleItemSubmit(event));
+        this.elements.exportReviewBtn.addEventListener('click', () => this.exportReviewCsv());
+        this.elements.clearStorageBtn.addEventListener('click', () => this.resetStorage());
+        this.elements.calcBtn.addEventListener('click', () => this.calculateValue());
+        this.elements.calcResetBtn.addEventListener('click', () => this.resetCalculator());
+        this.elements.addTransactionBtn.addEventListener('click', () => this.addTransaction());
+        this.elements.clearTransactionBtn.addEventListener('click', () => this.clearTransactions());
+        [this.elements.calcQty, this.elements.calcPrice].forEach((input) => {
+            input.addEventListener('input', () => this.calculateValue());
+        });
+    }
+
+    calculateValue() {
+        const quantity = Number(this.elements.calcQty.value) || 0;
+        const price = Number(this.elements.calcPrice.value) || 0;
+        const total = quantity * price;
+        this.elements.calcResult.value = total.toFixed(2);
+    }
+
+    resetCalculator() {
+        this.elements.calcQty.value = 1;
+        this.elements.calcPrice.value = 0;
+        this.elements.calcResult.value = '';
+    }
+
+    loadItems() {
+        const saved = localStorage.getItem('apparelEaseInventory');
+        if (saved) {
+            try {
+                this.items = JSON.parse(saved);
+            } catch (error) {
+                this.items = {};
+            }
+        }
+    }
+
+    saveItems() {
+        localStorage.setItem('apparelEaseInventory', JSON.stringify(this.items));
+    }
+
+    loadTransactions() {
+        const saved = localStorage.getItem('apparelEaseTransactions');
+        if (saved) {
+            try {
+                this.transactions = JSON.parse(saved);
+            } catch (error) {
+                this.transactions = [];
+            }
+        }
+        this.renderTransactions();
+    }
+
+    saveTransactions() {
+        localStorage.setItem('apparelEaseTransactions', JSON.stringify(this.transactions));
+    }
+
+    addTransaction() {
+        const userId = this.elements.userIdInput.value.trim() || 'Unknown';
+        const action = this.elements.actionTypeSelect.value;
+        const note = this.elements.transactionNoteInput.value.trim() || 'No details';
+
+        this.transactions.unshift({
+            userId,
+            action,
+            note,
+            time: new Date().toLocaleString(),
+        });
+
+        if (this.transactions.length > 15) {
+            this.transactions.length = 15;
+        }
+
+        this.saveTransactions();
+        this.renderTransactions();
+        this.elements.userIdInput.value = '';
+        this.elements.transactionNoteInput.value = '';
+        this.showToast('Transaction recorded.');
+    }
+
+    renderTransactions() {
+        if (this.transactions.length === 0) {
+            this.elements.transactionHistoryList.innerHTML = '<p class="muted">No transactions yet.</p>';
+            return;
+        }
+
+        this.elements.transactionHistoryList.innerHTML = this.transactions.map((entry) => `
+            <div class="review-card">
+                <div>
+                    <strong>${entry.action}</strong>
+                    <p class="muted">User ID: ${entry.userId}</p>
+                </div>
+                <div>
+                    <p>${entry.note}</p>
+                    <p class="muted">${entry.time}</p>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    clearTransactions() {
+        this.transactions = [];
+        this.saveTransactions();
+        this.renderTransactions();
+        this.showToast('Transaction history cleared.');
+    }
+
+    addScanHistory(code) {
+        const item = this.findItem(code);
+        this.scanHistory.unshift({
+            code,
+            time: new Date(),
+            matched: Boolean(item),
+            item_name: item?.item_name || 'Unknown SKU',
+        });
+        if (this.scanHistory.length > 12) {
+            this.scanHistory.length = 12;
+        }
+        this.renderScanHistory();
+    }
+
+    renderScanHistory() {
+        if (this.scanHistory.length === 0) {
+            this.elements.scanHistory.innerHTML = '<p class="muted">No scans yet. Start scanning to see recent barcode results here.</p>';
+            return;
+        }
+        this.elements.scanHistory.innerHTML = this.scanHistory.map((entry) => {
+            const label = entry.matched ? 'Matched' : 'Missing';
+            const statusClass = entry.matched ? '' : 'missing';
+            return `
+                <div class="review-card ${statusClass}">
+                    <div>
+                        <strong>${entry.item_name}</strong>
+                        <p class="muted">SKU: ${entry.code}</p>
+                    </div>
+                    <div>
+                        <p>${label}</p>
+                        <p class="muted">${entry.time.toLocaleTimeString()}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    clearScanHistory() {
+        this.scanHistory = [];
+        this.renderScanHistory();
+        this.showToast('Scan history cleared.');
+    }
+
+    resetStorage() {
+        if (!confirm('Delete saved inventory data and reset the app?')) {
+            return;
+        }
+        localStorage.removeItem('apparelEaseInventory');
+        this.items = {};
+        this.updateSummary();
+        this.showToast('Saved inventory cleared.');
+    }
+
+    updateSummary() {
+        const skuCount = Object.keys(this.items).length;
+        const quantityCount = Object.values(this.items).reduce((sum, item) => sum + (Number(item.total_quantity) || 0), 0);
+        this.elements.skuCount.textContent = skuCount;
+        this.elements.itemCount.textContent = quantityCount;
+    }
+
+    handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) {
+            return;
+        }
+        this.elements.uploadStatus.textContent = `Loading ${file.name}...`;
+        const extension = file.name.split('.').pop().toLowerCase();
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            try {
+                let workbook;
+                if (extension === 'csv' || extension === 'txt') {
+                    workbook = XLSX.read(reader.result, { type: 'string' });
+                } else {
+                    workbook = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+                }
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = this.parseSheetRows(firstSheet);
+                const imported = this.importRows(rows);
+                this.elements.uploadStatus.textContent = `Loaded ${imported.rows} rows and ${imported.skus} unique SKUs from ${file.name}.`;
+                this.elements.loadedSkuCount.textContent = imported.skus;
+                this.elements.loadedRows.textContent = imported.rows;
+                this.updateSummary();
+                this.showToast('Inventory upload complete. SKUs ready for scanning.');
+            } catch (error) {
+                console.error(error);
+                this.elements.uploadStatus.textContent = 'Upload failed. Use XLSX or CSV file format.';
+                this.showToast('Upload failed. Please try a valid spreadsheet file.');
+            }
+        };
+
+        if (extension === 'csv' || extension === 'txt') {
+            reader.readAsText(file);
+        } else {
+            reader.readAsArrayBuffer(file);
+        }
+        event.target.value = '';
+    }
+
+    importRows(rows) {
+        let rowCount = 0;
+        rows.forEach((row) => {
+            const item = this.normalizeRow(row);
+            if (!item.sku) {
+                return;
+            }
+            rowCount += 1;
+            const existing = this.items[item.sku] || null;
+            this.items[item.sku] = {
+                sku: item.sku,
+                item_name: item.item_name || existing?.item_name || 'Unnamed Item',
+                price: item.price || Number(existing?.price || 0),
+                total_quantity: Number(item.total_quantity || existing?.total_quantity || 0),
+                measurement: item.measurement || existing?.measurement || '',
+                serving_size: item.serving_size || existing?.serving_size || '',
+            };
+        });
+        this.saveItems();
+        return { rows: rowCount, skus: Object.keys(this.items).length };
+    }
+
+    parseSheetRows(sheet) {
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        if (rawRows.length === 0) {
+            return [];
+        }
+
+        const headerAliases = new Set([
+            'name', 'itemname', 'product', 'item', 'productname',
+            'sku', 'barcode', 'itemcode', 'productcode',
+            'price', 'cost', 'estimatedpricepercase',
+            'quantity', 'qty', 'totalquantity', 'totalqty', 'stock', 'casesordered', 'totalcounts', 'casecount', 'cases',
+        ]);
+
+        let headerRow = null;
+        let headerIndex = 0;
+        for (let rowIndex = 0; rowIndex < Math.min(rawRows.length, 12); rowIndex += 1) {
+            const row = rawRows[rowIndex];
+            if (!Array.isArray(row)) {
+                continue;
+            }
+            const normalizedRow = row.map((cell) => cell.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
+            const matches = normalizedRow.filter((cell) => cell && headerAliases.has(cell));
+            if (matches.length >= 2) {
+                headerRow = row;
+                headerIndex = rowIndex;
+                break;
+            }
+        }
+
+        if (!headerRow) {
+            return XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        }
+
+        const headers = headerRow.map((cell) => cell.toString().trim());
+        const rows = [];
+        for (let rowIndex = headerIndex + 1; rowIndex < rawRows.length; rowIndex += 1) {
+            const row = rawRows[rowIndex];
+            if (!Array.isArray(row)) {
+                continue;
+            }
+            const hasContent = row.some((cell) => cell !== null && cell !== '');
+            if (!hasContent) {
+                continue;
+            }
+            const rowObject = {};
+            headers.forEach((header, index) => {
+                if (header) {
+                    rowObject[header] = row[index] !== undefined ? row[index] : '';
+                }
+            });
+            rows.push(rowObject);
+        }
+        return rows;
+    }
+
+    normalizeRow(row) {
+        const normalized = {};
+        Object.keys(row).forEach((rawKey) => {
+            const key = rawKey.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const value = row[rawKey];
+            if (['name', 'itemname', 'product', 'item', 'productname'].includes(key)) {
+                normalized.item_name = value.toString().trim();
+            } else if (['sku', 'barcode', 'itemcode', 'productcode', 'skufillin'].includes(key)) {
+                normalized.sku = value.toString().trim();
+            } else if (['price', 'cost', 'estimatedpricepercase', 'pricepercase'].includes(key)) {
+                normalized.price = parseFloat(value) || 0;
+            } else if (['quantity', 'qty', 'totalquantity', 'totalqty', 'stock', 'casesordered', 'totalcounts', 'casecount', 'cases', 'casequantity'].includes(key)) {
+                normalized.total_quantity = parseInt(value, 10) || 0;
+            } else if (['measurement', 'unit', 'unitmeasure', 'measure', 'percase', 'percasevalue'].includes(key)) {
+                normalized.measurement = value.toString().trim();
+            } else if (['servingsize', 'servings', 'size', 'totallbpercase', 'ozperpiece'].includes(key)) {
+                normalized.serving_size = value.toString().trim();
+            }
+        });
+        return normalized;
+    }
+
+    async initScanner() {
+        if (!window.Quagga) {
+            this.showToast('Barcode scanner library not loaded.');
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            Quagga.init({
+                inputStream: {
+                    name: 'Live',
+                    type: 'LiveStream',
+                    target: this.elements.scannerVideo,
+                    constraints: {
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                    },
+                },
+                locator: { patchSize: 'medium', halfSample: true },
+                numOfWorkers: navigator.hardwareConcurrency || 2,
+                decoder: {
+                    readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader', 'upc_reader', 'upc_e_reader'],
+                },
+                locate: true,
+            }, (err) => {
+                if (err) {
+                    console.error('Quagga init error', err);
+                    this.showToast('Unable to initialize barcode camera. Please refresh and allow camera permission.');
+                    resolve(false);
+                    return;
+                }
+                Quagga.onDetected((result) => this.handleDetected(result));
+                resolve(true);
+            });
+        });
+    }
+
+    async startScanning() {
+        if (!this.mode) {
+            this.showToast('Select a mode first: Check In, Check Out, or Review.');
+            return;
+        }
+        if (this.isScanning) {
+            return;
+        }
+        const ready = await this.initScanner();
+        if (!ready) {
+            return;
+        }
+        Quagga.start();
+        this.isScanning = true;
+        this.elements.startScanBtn.classList.add('hidden');
+        this.elements.stopScanBtn.classList.remove('hidden');
+        this.elements.scannerMessage.textContent = 'Scanning... hold the barcode steady inside the frame.';
+    }
+
+    stopScanning() {
+        if (!this.isScanning) {
+            return;
+        }
+        Quagga.stop();
+        this.isScanning = false;
+        this.elements.startScanBtn.classList.remove('hidden');
+        this.elements.stopScanBtn.classList.add('hidden');
+        this.elements.scannerMessage.textContent = 'Scanner stopped. You can restart or change mode.';
+    }
+
+    handleDetected(result) {
+        if (!result || !result.codeResult) {
+            return;
+        }
+        const code = result.codeResult.code;
+        if (!code || this.lastDetected === code) {
+            return;
+        }
+        this.lastDetected = code;
+        setTimeout(() => {
+            this.lastDetected = null;
+        }, 1500);
+        this.elements.lastScanned.textContent = code;
+
+        if (this.mode === 'review') {
+            this.addReviewRecord(code);
+            return;
+        }
+
+        this.stopScanning();
+        const item = this.findItem(code);
+        this.showFormForCode(code, item);
+    }
+
+    findItem(code) {
+        const direct = this.items[code];
+        if (direct) {
+            return direct;
+        }
+        return Object.values(this.items).find((item) => item.sku === code || item.barcode === code) || null;
+    }
+
+    showFormForCode(code, item) {
+        this.elements.itemFormSection.classList.remove('hidden');
+        this.elements.reviewSection.classList.add('hidden');
+        const modeText = this.mode === 'check_in' ? 'Check In' : 'Check Out';
+        this.elements.itemFormTitle.textContent = item ? `${modeText} — ${item.item_name}` : `${modeText} — Add New Item`;
+        this.elements.itemSku.value = item?.sku || code;
+        this.elements.itemName.value = item?.item_name || '';
+        this.elements.itemPrice.value = item?.price || 0;
+        this.elements.itemQuantity.value = this.mode === 'check_in' ? 1 : item?.total_quantity || 0;
+        this.elements.itemMeasurement.value = item?.measurement || '';
+        this.elements.itemServing.value = item?.serving_size || '';
+    }
+
+    hideItemForm() {
+        this.elements.itemFormSection.classList.add('hidden');
+    }
+
+    handleItemSubmit(event) {
+        event.preventDefault();
+        const sku = this.elements.itemSku.value.trim();
+        if (!sku) {
+            this.showToast('SKU is required.');
+            return;
+        }
+        const name = this.elements.itemName.value.trim() || 'Unnamed Item';
+        const price = parseFloat(this.elements.itemPrice.value) || 0;
+        const quantity = parseInt(this.elements.itemQuantity.value, 10) || 0;
+        const measurement = this.elements.itemMeasurement.value.trim();
+        const serving = this.elements.itemServing.value.trim();
+        const existing = this.items[sku] || null;
+        let totalQuantity = quantity;
+
+        if (this.mode === 'check_in' || this.mode === 'manual') {
+            totalQuantity = (existing?.total_quantity || 0) + quantity;
+        } else if (this.mode === 'check_out') {
+            totalQuantity = Math.max((existing?.total_quantity || 0) - quantity, 0);
+        }
+
+        this.items[sku] = {
+            sku,
+            item_name: name,
+            price,
+            total_quantity: totalQuantity,
+            measurement,
+            serving_size: serving,
+        };
+        this.saveItems();
+        this.updateSummary();
+        this.hideItemForm();
+        const actionText = this.mode === 'check_in' ? 'Checked in' : this.mode === 'check_out' ? 'Checked out' : 'Added';
+        this.showToast(`${actionText} item ${sku} successfully.`);
+    }
+
+    addReviewRecord(code) {
+        if (this.reviewSet.has(code)) {
+            this.elements.scannerMessage.textContent = `${code} already scanned in review.`;
+            return;
+        }
+        this.reviewSet.add(code);
+        const item = this.findItem(code);
+        const record = {
+            sku: code,
+            item_name: item?.item_name || 'Unknown SKU',
+            price: item?.price || 0,
+            total_quantity: item?.total_quantity || 0,
+            measurement: item?.measurement || '',
+            serving_size: item?.serving_size || '',
+            matched: Boolean(item),
+        };
+        this.reviewRecords.push(record);
+        this.elements.scannerMessage.textContent = `Captured ${code}. Scan more or finish review.`;
+        this.renderReviewList();
+    }
+
+    renderReviewList() {
+        if (this.reviewRecords.length === 0) {
+            this.elements.reviewList.innerHTML = '<p class="muted">No items scanned yet.</p>';
+            return;
+        }
+        this.elements.reviewList.innerHTML = this.reviewRecords.map((record) => `
+            <div class="review-card ${record.matched ? '' : 'missing'}">
+                <div>
+                    <strong>${record.item_name}</strong>
+                    <p class="muted">SKU: ${record.sku}</p>
+                </div>
+                <div>
+                    <p>${record.matched ? `Price: ₱${record.price}` : 'Not found'}</p>
+                    <p>Total qty: ${record.total_quantity}</p>
+                    <p>Measure: ${record.measurement || '-'} | Serving: ${record.serving_size || '-'}</p>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    finishReview() {
+        this.stopScanning();
+        this.elements.reviewSection.classList.remove('hidden');
+        this.renderReviewList();
+        this.showToast('Review complete. You can export the report.');
+    }
+
+    exportReviewCsv() {
+        if (this.reviewRecords.length === 0) {
+            this.showToast('No review items to export.');
+            return;
+        }
+        const header = ['Item Name', 'SKU', 'Price', 'Total Quantity', 'Measurement', 'Serving Size', 'Matched'];
+        const rows = this.reviewRecords.map((record) => [
+            record.item_name,
+            record.sku,
+            record.price,
+            record.total_quantity,
+            record.measurement,
+            record.serving_size,
+            record.matched ? 'Yes' : 'No',
+        ]);
+        const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const link = document.createElement('a');
+        link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        link.download = `inventory_review_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async openCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            this.showToast('Camera not supported in this browser.');
+            return;
+        }
+        try {
+            this.photoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            this.elements.photoVideo.srcObject = this.photoStream;
+            this.elements.photoSection.classList.remove('hidden');
+            this.elements.takePhotoBtn.classList.remove('hidden');
+            this.elements.retakePhotoBtn.classList.add('hidden');
+            this.elements.photoPreview.innerHTML = '';
+        } catch (error) {
+            console.error(error);
+            this.showToast('Unable to access camera. Grant permission and try again.');
+        }
+    }
+
+    capturePhoto() {
+        const video = this.elements.photoVideo;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        this.elements.photoPreview.innerHTML = `<img src="${dataUrl}" alt="Captured photo">`;
+        this.elements.takePhotoBtn.classList.add('hidden');
+        this.elements.retakePhotoBtn.classList.remove('hidden');
+        this.stopPhotoStream();
+        this.showToast('Photo captured.');
+    }
+
+    resetPhotoCapture() {
+        this.elements.photoPreview.innerHTML = '';
+        this.elements.takePhotoBtn.classList.remove('hidden');
+        this.elements.retakePhotoBtn.classList.add('hidden');
+        this.openCamera();
+    }
+
+    stopPhotoStream() {
+        if (this.photoStream) {
+            this.photoStream.getTracks().forEach((track) => track.stop());
+            this.photoStream = null;
+        }
+    }
+
+    showToast(message) {
+        this.elements.toast.textContent = message;
+        this.elements.toast.classList.remove('hidden');
+        this.elements.toast.classList.add('show');
+        clearTimeout(this.toastTimeout);
+        this.toastTimeout = setTimeout(() => {
+            this.elements.toast.classList.remove('show');
+        }, 2500);
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    new InventoryApp();
+});
+
