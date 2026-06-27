@@ -824,6 +824,35 @@ video {
     }
 }
 
+/* Camera help modal */
+.modal {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 2000;
+}
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2,6,23,0.6);
+    backdrop-filter: blur(6px);
+}
+.modal-panel {
+    position: relative;
+    background: rgba(15,23,42,0.98);
+    border: 1px solid rgba(37,99,235,0.14);
+    padding: 18px;
+    border-radius: 14px;
+    width: min(720px, 92%);
+    z-index: 2010;
+}
+.modal-panel h3 { margin-top: 0; }
+.modal-panel ul { margin: 8px 0 14px 18px; color: #94a3b8; }
+.modal .form-actions { justify-content: flex-end; }
+
+.scanner-header .btn.ghost[title] { font-size: 0.85rem; padding: 8px 12px; }
+
 @media (max-width: 480px) {
     .summary-grid {
         grid-template-columns: 1fr;

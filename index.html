@@ -146,6 +146,7 @@
                             <p class="muted">Use your device camera to scan SKU barcodes automatically.</p>
                         </div>
                         <span class="status-pill" id="cameraStatus">Camera ready</span>
+                        <button class="btn ghost" id="cameraHelpBtn" title="Camera help">Need camera help?</button>
                         <span class="status-pill" id="currentModeLabel">Mode: Check In</span>
                     </div>
                     <div class="video-wrap">
@@ -218,6 +219,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn ghost" id="cancelItemBtn">Cancel</button>
+                    <button type="button" class="btn secondary" id="saveOpenStorageBtn">Save & Open Storage</button>
                     <button type="submit" class="btn primary">Save Item</button>
                 </div>
             </form>
@@ -237,6 +239,24 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
+
+    <div id="cameraHelpModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-panel">
+            <h3>Camera & Scanner Help</h3>
+            <p class="muted">If your phone's camera doesn't open, try these steps:</p>
+            <ul>
+                <li>Open this page over <strong>HTTPS</strong> or use <strong>localhost</strong> for testing.</li>
+                <li>Grant camera permission when the browser prompts.</li>
+                <li>Use the browser's site settings to allow camera if previously blocked.</li>
+                <li>Prefer a modern browser (Chrome, Edge, Firefox) and set camera to rear ('environment').</li>
+            </ul>
+            <div class="form-actions">
+                <button class="btn primary" id="cameraRetryBtn">Retry Camera Permission</button>
+                <button class="btn ghost" id="cameraHelpCloseBtn">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>

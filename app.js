@@ -6,6 +6,10 @@ class InventoryApp {
         this.reviewSet = new Set();
         this.isScanning = false;
         this.lastDetected = null;
+        this.videoStream = null;
+        this.barcodeDetector = null;
+        this.barcodeLoopActive = false;
+        this.scannerUsingQuagga = false;
         this.toastTimeout = null;
         this.scanHistory = [];
         this.transactions = [];
@@ -50,6 +54,7 @@ class InventoryApp {
             itemMeasurement: document.getElementById('itemMeasurement'),
             itemServing: document.getElementById('itemServing'),
             cancelItemBtn: document.getElementById('cancelItemBtn'),
+            saveOpenStorageBtn: document.getElementById('saveOpenStorageBtn'),
             reviewSection: document.getElementById('reviewSection'),
             reviewList: document.getElementById('reviewList'),
             exportReviewBtn: document.getElementById('exportReviewBtn'),
@@ -66,6 +71,10 @@ class InventoryApp {
             clearTransactionBtn: document.getElementById('clearTransactionBtn'),
             transactionHistoryList: document.getElementById('transactionHistoryList'),
             toast: document.getElementById('toast'),
+                cameraHelpBtn: document.getElementById('cameraHelpBtn'),
+                cameraHelpModal: document.getElementById('cameraHelpModal'),
+                cameraRetryBtn: document.getElementById('cameraRetryBtn'),
+                cameraHelpCloseBtn: document.getElementById('cameraHelpCloseBtn'),
         };
     }
 
@@ -80,6 +89,9 @@ class InventoryApp {
         this.elements.modeReviewBtn.addEventListener('click', () => this.setMode('review'));
         this.elements.clearHistoryBtn.addEventListener('click', () => this.clearScanHistory());
         this.elements.cancelItemBtn.addEventListener('click', () => this.hideItemForm());
+        if (this.elements.saveOpenStorageBtn) {
+            this.elements.saveOpenStorageBtn.addEventListener('click', () => this.saveAndOpenStorage());
+        }
         this.elements.itemForm.addEventListener('submit', (event) => this.handleItemSubmit(event));
         this.elements.exportReviewBtn.addEventListener('click', () => this.exportReviewCsv());
         this.elements.clearStorageBtn.addEventListener('click', () => this.resetStorage());
@@ -126,6 +138,15 @@ class InventoryApp {
             try {
                 this.transactions = JSON.parse(saved);
             } catch (error) {
+            if (this.elements.cameraHelpBtn) {
+                this.elements.cameraHelpBtn.addEventListener('click', () => this.showCameraHelp());
+            }
+            if (this.elements.cameraHelpCloseBtn) {
+                this.elements.cameraHelpCloseBtn.addEventListener('click', () => this.closeCameraHelp());
+            }
+            if (this.elements.cameraRetryBtn) {
+                this.elements.cameraRetryBtn.addEventListener('click', () => this.tryEnableCamera());
+            }
                 this.transactions = [];
             }
         }
@@ -408,8 +429,27 @@ class InventoryApp {
     }
 
     async initScanner() {
+        // Prefer native BarcodeDetector on modern mobile browsers
+        if ('BarcodeDetector' in window) {
+            try {
+                const formats = await BarcodeDetector.getSupportedFormats();
+                this.barcodeDetector = new BarcodeDetector({ formats });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                this.videoStream = stream;
+                this.elements.scannerVideo.srcObject = stream;
+                await this.elements.scannerVideo.play();
+                this.scannerUsingQuagga = false;
+                this.barcodeLoopActive = true;
+                this.runBarcodeLoop();
+                return true;
+            } catch (err) {
+                console.warn('BarcodeDetector init failed, falling back to Quagga', err);
+                // fall through to Quagga fallback
+            }
+        }
+
         if (!window.Quagga) {
-            this.showToast('Barcode scanner library not loaded.');
+            this.showToast('No supported barcode scanner available in this browser.');
             return false;
         }
 
@@ -439,9 +479,33 @@ class InventoryApp {
                     return;
                 }
                 Quagga.onDetected((result) => this.handleDetected(result));
+                this.scannerUsingQuagga = true;
                 resolve(true);
             });
         });
+    }
+
+    async runBarcodeLoop() {
+        if (!this.barcodeDetector || !this.elements.scannerVideo) return;
+        while (this.barcodeLoopActive) {
+            try {
+                const barcodes = await this.barcodeDetector.detect(this.elements.scannerVideo);
+                if (barcodes && barcodes.length > 0) {
+                    const code = barcodes[0].rawValue;
+                    if (code && this.lastDetected !== code) {
+                        this.lastDetected = code;
+                        // debounce
+                        setTimeout(() => { this.lastDetected = null; }, 1500);
+                        this.handleDetected({ codeResult: { code } });
+                    }
+                }
+            } catch (error) {
+                // detection may fail intermittently; log and continue
+                // console.warn('Barcode detection error', error);
+            }
+            // small delay to avoid tight loop
+            await new Promise((res) => setTimeout(res, 200));
+        }
     }
 
     async startScanning() {
@@ -456,7 +520,9 @@ class InventoryApp {
         if (!ready) {
             return;
         }
-        Quagga.start();
+        if (this.scannerUsingQuagga) {
+            Quagga.start();
+        }
         this.isScanning = true;
         this.elements.startScanBtn.classList.add('hidden');
         this.elements.stopScanBtn.classList.remove('hidden');
@@ -467,7 +533,19 @@ class InventoryApp {
         if (!this.isScanning) {
             return;
         }
-        Quagga.stop();
+        if (this.scannerUsingQuagga && window.Quagga) {
+            Quagga.stop();
+        } else {
+            // stop native BarcodeDetector video loop
+            this.barcodeLoopActive = false;
+            if (this.videoStream) {
+                this.videoStream.getTracks().forEach((track) => track.stop());
+                this.videoStream = null;
+            }
+            if (this.elements.scannerVideo) {
+                this.elements.scannerVideo.srcObject = null;
+            }
+        }
         this.isScanning = false;
         this.elements.startScanBtn.classList.remove('hidden');
         this.elements.stopScanBtn.classList.add('hidden');
@@ -497,11 +575,12 @@ class InventoryApp {
         this.stopScanning();
         if (item) {
             if (this.mode === 'check_in') {
-                const message = `Item ${code} already exists in storage. Opening storage filtered for this SKU.`;
+                // allow editing/existing item to be adjusted and saved
+                this.showFormForCode(code, item);
+                this.elements.itemQuantity.value = 1;
+                const message = `Item found. Edit details or increase quantity and Save.`;
                 this.elements.scannerMessage.textContent = message;
                 this.showToast(message);
-                window.alert(`Item ${code} is already here. Redirecting to storage list.`);
-                window.location.href = `storage.html?filter=${encodeURIComponent(code)}`;
                 return;
             }
             if (this.mode === 'check_out') {
@@ -514,8 +593,9 @@ class InventoryApp {
         }
 
         if (this.mode === 'check_in') {
+            // new item flow
             this.showFormForCode(code, item);
-            const message = `SKU ${code} not found. Add it to inventory or scan again.`;
+            const message = `SKU ${code} not found. Fill details and Save to add to inventory.`;
             this.elements.scannerMessage.textContent = message;
             this.showToast(message);
             return;
@@ -548,6 +628,14 @@ class InventoryApp {
         this.elements.itemQuantity.value = this.mode === 'check_in' ? 1 : item?.total_quantity || 0;
         this.elements.itemMeasurement.value = item?.measurement || '';
         this.elements.itemServing.value = item?.serving_size || '';
+        // focus and smooth scroll for convenience on mobile
+        setTimeout(() => {
+            try {
+                this.elements.itemName.focus();
+                this.elements.itemSku.select();
+                this.elements.itemFormSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) {}
+        }, 120);
     }
 
     hideItemForm() {
@@ -588,6 +676,45 @@ class InventoryApp {
         this.hideItemForm();
         const actionText = this.mode === 'check_in' ? 'Checked in' : this.mode === 'check_out' ? 'Checked out' : 'Added';
         this.showToast(`${actionText} item ${sku} successfully.`);
+    }
+
+    saveAndOpenStorage() {
+        // replicate save logic but then redirect to storage with filter
+        const sku = this.elements.itemSku.value.trim();
+        if (!sku) {
+            this.showToast('SKU is required.');
+            return;
+        }
+        const name = this.elements.itemName.value.trim() || 'Unnamed Item';
+        const price = parseFloat(this.elements.itemPrice.value) || 0;
+        const quantity = parseInt(this.elements.itemQuantity.value, 10) || 0;
+        const measurement = this.elements.itemMeasurement.value.trim();
+        const serving = this.elements.itemServing.value.trim();
+        const existing = this.items[sku] || null;
+        let totalQuantity = quantity;
+
+        if (this.mode === 'check_in' || this.mode === 'manual') {
+            totalQuantity = (existing?.total_quantity || 0) + quantity;
+        } else if (this.mode === 'check_out') {
+            totalQuantity = Math.max((existing?.total_quantity || 0) - quantity, 0);
+        }
+
+        this.items[sku] = {
+            sku,
+            item_name: name,
+            price,
+            total_quantity: totalQuantity,
+            measurement,
+            serving_size: serving,
+        };
+        this.saveItems();
+        this.updateSummary();
+        this.hideItemForm();
+        this.showToast(`Saved ${sku} and opening storage.`);
+        // small delay to allow toast to show before navigation
+        setTimeout(() => {
+            window.location.href = `storage.html?filter=${encodeURIComponent(sku)}`;
+        }, 500);
     }
 
     addReviewRecord(code) {
@@ -671,6 +798,31 @@ class InventoryApp {
         this.toastTimeout = setTimeout(() => {
             this.elements.toast.classList.remove('show');
         }, 2500);
+    }
+
+    showCameraHelp() {
+        if (!this.elements.cameraHelpModal) return;
+        this.elements.cameraHelpModal.classList.remove('hidden');
+    }
+
+    closeCameraHelp() {
+        if (!this.elements.cameraHelpModal) return;
+        this.elements.cameraHelpModal.classList.add('hidden');
+    }
+
+    async tryEnableCamera() {
+        try {
+            // Prompt browser permission for camera
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            // stop tracks immediately - this was only to prompt permission
+            stream.getTracks().forEach((t) => t.stop());
+            this.elements.cameraStatus.textContent = 'Camera permission granted';
+            this.showToast('Camera permission granted. Press Start Scanning.');
+            this.closeCameraHelp();
+        } catch (err) {
+            console.error('Camera access denied or unavailable', err);
+            this.showToast('Unable to access camera. Check browser settings or use HTTPS/localhost.');
+        }
     }
 }
 
