@@ -107,11 +107,22 @@ class StoragePage {
         this.filteredItems = Object.values(this.items);
         this.updateStorageCount();
         this.setMode(this.currentMode, false);
+        this.applyInitialFilter();
         if (this.elements.loadedSkuCount) {
             const savedCount = Object.keys(this.items).length;
             this.elements.loadedSkuCount.textContent = savedCount;
             this.elements.loadedRows.textContent = savedCount;
             this.elements.uploadStatus.textContent = savedCount > 0 ? 'Loaded saved inventory from browser storage.' : 'Waiting for file';
+        }
+    }
+
+    applyInitialFilter() {
+        const params = new URLSearchParams(window.location.search);
+        const filter = params.get('filter');
+        if (filter) {
+            this.elements.filterInput.value = filter;
+            this.handleFilter();
+            this.showToast(`Filtered storage for ${filter}`);
         }
     }
 
@@ -327,10 +338,21 @@ class StoragePage {
         this.elements.scannerModal.classList.add('show');
         this.elements.scannerModal.setAttribute('aria-hidden', 'false');
         this.elements.scannerModalStatus.textContent = 'Requesting camera access...';
-        this.elements.detectedSkuText.textContent = 'Scan a barcode to fill the SKU field.';
+        this.elements.detectedSkuText.textContent = 'Scan a barcode to remove the item from storage or open manual entry.';
         this.elements.startScannerBtn.classList.remove('hidden');
         this.elements.stopScannerBtn.classList.add('hidden');
         this.startScanner();
+    }
+
+    findItem(code) {
+        if (!code) {
+            return null;
+        }
+        const direct = this.items[code];
+        if (direct) {
+            return direct;
+        }
+        return Object.values(this.items).find((item) => item.sku === code || item.barcode === code) || null;
     }
 
     closeScannerPopup() {
@@ -413,9 +435,19 @@ class StoragePage {
         this.scanCooldown = true;
         this.elements.scannerModalStatus.textContent = `Detected: ${code}`;
         this.elements.detectedSkuText.textContent = `Detected SKU: ${code}`;
-        this.showToast(`Detected SKU ${code}. Fill details and save.`);
-        this.showManualAddForm(code);
-        this.closeScannerPopup();
+
+        const item = this.findItem(code);
+        if (item) {
+            this.elements.scannerModalStatus.textContent = `Removing ${item.item_name || code} from storage...`;
+            this.deleteItem(item.sku, false);
+            this.showToast(`Removed ${item.item_name || code} from storage via scan.`);
+            this.closeScannerPopup();
+        } else {
+            this.showToast(`SKU ${code} not found. Open manual entry to add it.`);
+            this.showManualAddForm(code);
+            this.closeScannerPopup();
+        }
+
         setTimeout(() => {
             this.scanCooldown = false;
         }, 1500);
@@ -588,12 +620,12 @@ class StoragePage {
         this.elements.storageCount.textContent = activeCount;
     }
 
-    deleteItem(sku) {
+    deleteItem(sku, askConfirm = true) {
         const item = this.items[sku];
         if (!item) {
             return;
         }
-        if (!confirm(`Remove item ${sku} from storage?`)) {
+        if (askConfirm && !confirm(`Remove item ${sku} from storage?`)) {
             return;
         }
         this.lastRemovedItem = { sku, item: { ...item } };
@@ -601,7 +633,9 @@ class StoragePage {
         this.saveItems();
         this.handleFilter();
         this.toggleUndoButton(true);
-        this.showToast(`Item ${sku} removed from storage. Undo available.`);
+        if (askConfirm) {
+            this.showToast(`Item ${sku} removed from storage. Undo available.`);
+        }
     }
 
     undoLastRemoval() {

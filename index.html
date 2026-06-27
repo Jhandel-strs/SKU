@@ -33,6 +33,10 @@
                 <p class="muted">Last scanned code</p>
                 <h2 id="lastScanned">None</h2>
             </article>
+            <article class="stat-block mode-display">
+                <p class="muted">Current scanner mode</p>
+                <h2 id="currentModeSummary">Check In</h2>
+            </article>
         </section>
 
         <section class="upload-panel card">
@@ -142,6 +146,7 @@
                             <p class="muted">Use your device camera to scan SKU barcodes automatically.</p>
                         </div>
                         <span class="status-pill" id="cameraStatus">Camera ready</span>
+                        <span class="status-pill" id="currentModeLabel">Mode: Check In</span>
                     </div>
                     <div class="video-wrap">
                         <video id="scannerVideo" playsinline autoplay muted></video>
@@ -157,11 +162,15 @@
                     <p class="muted small">Make sure your browser has camera permission enabled and allow the browser to access video.</p>
                 </div>
                 <div class="scanner-controls">
+                    <div class="mode-buttons">
+                        <button class="btn secondary mode-button active" id="modeCheckInBtn">Check In</button>
+                        <button class="btn secondary mode-button" id="modeCheckOutBtn">Check Out</button>
+                        <button class="btn secondary mode-button" id="modeReviewBtn">Review</button>
+                    </div>
                     <button class="btn primary" id="startScanBtn">Start Scanning</button>
                     <button class="btn ghost hidden" id="stopScanBtn">Stop Scanning</button>
-                    <button class="btn secondary" id="capturePhotoBtn">Take Picture</button>
                     <button class="btn secondary hidden" id="finishReviewBtn">Finish Review</button>
-                    <div class="scanner-status" id="scannerMessage">Select a mode and start scanning.</div>
+                    <div class="scanner-status" id="scannerMessage">Check In mode active. Select a mode and start scanning.</div>
                 </div>
             </div>
             <div class="history-panel card scanner-history-panel">
@@ -225,19 +234,6 @@
             <div class="review-list" id="reviewList"></div>
         </section>
 
-        <section class="photo-panel card hidden" id="photoSection">
-            <h2>Captured Photo</h2>
-            <div class="photo-grid">
-                <div class="video-wrap small">
-                    <video id="photoVideo" playsinline autoplay muted></video>
-                </div>
-                <div class="photo-preview" id="photoPreview"></div>
-            </div>
-            <div class="form-actions">
-                <button class="btn secondary" id="takePhotoBtn">Capture</button>
-                <button class="btn ghost hidden" id="retakePhotoBtn">Retake</button>
-            </div>
-        </section>
     </div>
 
     <div id="toast" class="toast hidden"></div>

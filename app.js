@@ -1,18 +1,18 @@
 class InventoryApp {
     constructor() {
         this.items = {};
-        this.mode = null;
+        this.mode = 'check_in';
         this.reviewRecords = [];
         this.reviewSet = new Set();
         this.isScanning = false;
         this.lastDetected = null;
-        this.photoStream = null;
         this.toastTimeout = null;
         this.scanHistory = [];
         this.transactions = [];
         this.loadElements();
         this.bindEvents();
         this.loadItems();
+        this.setMode(this.mode, false);
         this.loadTransactions();
         this.updateSummary();
     }
@@ -30,12 +30,16 @@ class InventoryApp {
             scannerVideo: document.getElementById('scannerVideo'),
             startScanBtn: document.getElementById('startScanBtn'),
             stopScanBtn: document.getElementById('stopScanBtn'),
-            capturePhotoBtn: document.getElementById('capturePhotoBtn'),
             finishReviewBtn: document.getElementById('finishReviewBtn'),
             clearHistoryBtn: document.getElementById('clearHistoryBtn'),
             cameraStatus: document.getElementById('cameraStatus'),
             scanHistory: document.getElementById('scanHistory'),
             scannerMessage: document.getElementById('scannerMessage'),
+            currentModeLabel: document.getElementById('currentModeLabel'),
+            currentModeSummary: document.getElementById('currentModeSummary'),
+            modeCheckInBtn: document.getElementById('modeCheckInBtn'),
+            modeCheckOutBtn: document.getElementById('modeCheckOutBtn'),
+            modeReviewBtn: document.getElementById('modeReviewBtn'),
             itemFormSection: document.getElementById('itemFormSection'),
             itemFormTitle: document.getElementById('itemFormTitle'),
             itemForm: document.getElementById('itemForm'),
@@ -49,11 +53,6 @@ class InventoryApp {
             reviewSection: document.getElementById('reviewSection'),
             reviewList: document.getElementById('reviewList'),
             exportReviewBtn: document.getElementById('exportReviewBtn'),
-            photoSection: document.getElementById('photoSection'),
-            photoVideo: document.getElementById('photoVideo'),
-            photoPreview: document.getElementById('photoPreview'),
-            takePhotoBtn: document.getElementById('takePhotoBtn'),
-            retakePhotoBtn: document.getElementById('retakePhotoBtn'),
             clearStorageBtn: document.getElementById('clearStorageBtn'),
             calcQty: document.getElementById('calcQty'),
             calcPrice: document.getElementById('calcPrice'),
@@ -76,9 +75,9 @@ class InventoryApp {
         this.elements.startScanBtn.addEventListener('click', () => this.startScanning());
         this.elements.stopScanBtn.addEventListener('click', () => this.stopScanning());
         this.elements.finishReviewBtn.addEventListener('click', () => this.finishReview());
-        this.elements.capturePhotoBtn.addEventListener('click', () => this.openCamera());
-        this.elements.takePhotoBtn.addEventListener('click', () => this.capturePhoto());
-        this.elements.retakePhotoBtn.addEventListener('click', () => this.resetPhotoCapture());
+        this.elements.modeCheckInBtn.addEventListener('click', () => this.setMode('check_in'));
+        this.elements.modeCheckOutBtn.addEventListener('click', () => this.setMode('check_out'));
+        this.elements.modeReviewBtn.addEventListener('click', () => this.setMode('review'));
         this.elements.clearHistoryBtn.addEventListener('click', () => this.clearScanHistory());
         this.elements.cancelItemBtn.addEventListener('click', () => this.hideItemForm());
         this.elements.itemForm.addEventListener('submit', (event) => this.handleItemSubmit(event));
@@ -131,6 +130,28 @@ class InventoryApp {
             }
         }
         this.renderTransactions();
+    }
+
+    setMode(mode, showFeedback = true) {
+        this.mode = mode;
+        const buttons = [
+            this.elements.modeCheckInBtn,
+            this.elements.modeCheckOutBtn,
+            this.elements.modeReviewBtn,
+        ];
+        buttons.forEach((button) => {
+            button.classList.toggle('active', button.id === `mode${mode === 'check_in' ? 'CheckIn' : mode === 'check_out' ? 'CheckOut' : 'Review'}Btn`);
+        });
+        const modeLabel = mode === 'check_in' ? 'Check In' : mode === 'check_out' ? 'Check Out' : 'Review';
+        this.elements.currentModeLabel.textContent = `Mode: ${modeLabel}`;
+        if (this.elements.currentModeSummary) {
+            this.elements.currentModeSummary.textContent = modeLabel;
+        }
+        this.elements.scannerMessage.textContent = `${modeLabel} mode selected. Press Start to scan.`;
+        this.elements.finishReviewBtn.classList.toggle('hidden', mode !== 'review');
+        if (showFeedback) {
+            this.showToast(`${modeLabel} mode selected.`);
+        }
     }
 
     saveTransactions() {
@@ -472,9 +493,40 @@ class InventoryApp {
             return;
         }
 
-        this.stopScanning();
         const item = this.findItem(code);
-        this.showFormForCode(code, item);
+        this.stopScanning();
+        if (item) {
+            if (this.mode === 'check_in') {
+                const message = `Item ${code} already exists in storage. Opening storage filtered for this SKU.`;
+                this.elements.scannerMessage.textContent = message;
+                this.showToast(message);
+                window.alert(`Item ${code} is already here. Redirecting to storage list.`);
+                window.location.href = `storage.html?filter=${encodeURIComponent(code)}`;
+                return;
+            }
+            if (this.mode === 'check_out') {
+                this.showFormForCode(code, item);
+                const message = `Checking out ${item.item_name || code}. Confirm quantity and save.`;
+                this.elements.scannerMessage.textContent = message;
+                this.showToast(message);
+                return;
+            }
+        }
+
+        if (this.mode === 'check_in') {
+            this.showFormForCode(code, item);
+            const message = `SKU ${code} not found. Add it to inventory or scan again.`;
+            this.elements.scannerMessage.textContent = message;
+            this.showToast(message);
+            return;
+        }
+
+        if (this.mode === 'check_out') {
+            const message = `SKU ${code} not found in inventory. Cannot check out missing item.`;
+            this.elements.scannerMessage.textContent = message;
+            this.showToast(message);
+            return;
+        }
     }
 
     findItem(code) {
@@ -610,52 +662,6 @@ class InventoryApp {
         document.body.removeChild(link);
     }
 
-    async openCamera() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            this.showToast('Camera not supported in this browser.');
-            return;
-        }
-        try {
-            this.photoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            this.elements.photoVideo.srcObject = this.photoStream;
-            this.elements.photoSection.classList.remove('hidden');
-            this.elements.takePhotoBtn.classList.remove('hidden');
-            this.elements.retakePhotoBtn.classList.add('hidden');
-            this.elements.photoPreview.innerHTML = '';
-        } catch (error) {
-            console.error(error);
-            this.showToast('Unable to access camera. Grant permission and try again.');
-        }
-    }
-
-    capturePhoto() {
-        const video = this.elements.photoVideo;
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        this.elements.photoPreview.innerHTML = `<img src="${dataUrl}" alt="Captured photo">`;
-        this.elements.takePhotoBtn.classList.add('hidden');
-        this.elements.retakePhotoBtn.classList.remove('hidden');
-        this.stopPhotoStream();
-        this.showToast('Photo captured.');
-    }
-
-    resetPhotoCapture() {
-        this.elements.photoPreview.innerHTML = '';
-        this.elements.takePhotoBtn.classList.remove('hidden');
-        this.elements.retakePhotoBtn.classList.add('hidden');
-        this.openCamera();
-    }
-
-    stopPhotoStream() {
-        if (this.photoStream) {
-            this.photoStream.getTracks().forEach((track) => track.stop());
-            this.photoStream = null;
-        }
-    }
 
     showToast(message) {
         this.elements.toast.textContent = message;
