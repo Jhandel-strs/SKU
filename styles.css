@@ -9,7 +9,7 @@ body {
     min-height: 100vh;
     background: radial-gradient(circle at top, #16181d 0%, #050608 65%, #010103 100%);
     color: #e2e8f0;
-    padding: 32px;
+    padding: 20px;
 }
 
 .session-panel {
@@ -426,6 +426,7 @@ th, td {
 .inventory-app {
     max-width: 1080px;
     margin: 0 auto;
+    width: 100%;
 }
 
 .app-header {
@@ -435,9 +436,9 @@ th, td {
     align-items: end;
     background: rgba(15, 23, 42, 0.95);
     border-radius: 24px;
-    padding: 32px;
+    padding: 24px;
     border: 1px solid rgba(37, 99, 235, 0.18);
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
 .app-header h1 {
@@ -464,14 +465,14 @@ th, td {
 
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 18px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
 }
 
 .stat-block {
-    padding: 24px;
-    border-radius: 24px;
+    padding: 18px;
+    border-radius: 20px;
     background: rgba(15, 23, 42, 0.9);
     border: 1px solid rgba(37, 99, 235, 0.18);
 }
@@ -482,11 +483,11 @@ th, td {
 }
 
 .card {
-    padding: 28px;
-    border-radius: 24px;
+    padding: 20px;
+    border-radius: 20px;
     background: rgba(15, 23, 42, 0.92);
     border: 1px solid rgba(37, 99, 235, 0.18);
-    margin-bottom: 24px;
+    margin-bottom: 18px;
 }
 
 .mode-panel h2,
@@ -752,6 +753,69 @@ video {
     .scanner-grid,
     .photo-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 12px;
+    }
+
+    .app-header {
+        grid-template-columns: 1fr;
+        padding: 18px;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+        padding: 16px;
+    }
+
+    .header-actions,
+    .actions,
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .quick-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .quick-qty-input {
+        width: 100%;
+    }
+
+    #filterInput {
+        min-width: 100%;
+    }
+
+    .review-card {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .btn,
+    .mode-button {
+        width: 100%;
+    }
+
+    .storage-mode-row {
+        width: 100%;
+        justify-content: center;
+    }
+
+    th, td {
+        padding: 10px 8px;
     }
 }
 
