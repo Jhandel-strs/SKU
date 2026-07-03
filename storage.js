@@ -1,5 +1,12 @@
 class StoragePage {
     constructor() {
+        // Check if user is authenticated
+        this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
+        if (!this.currentUser) {
+            window.location.href = 'auth.html';
+            return;
+        }
+
         this.items = {};
         this.filteredItems = [];
         this.scannerStream = null;
@@ -11,9 +18,37 @@ class StoragePage {
         this.lastRemovedItem = null;
         this.editingSku = null;
         this.loadElements();
+        this.displayUserInfo();
         this.bindEvents();
         this.loadItems();
         this.renderStorageList();
+    }
+
+    displayUserInfo() {
+        const userInfoDiv = document.getElementById('userInfo');
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserTeam = document.getElementById('currentUserTeam');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        if (this.currentUser && userInfoDiv) {
+            currentUserName.textContent = this.currentUser.name;
+            currentUserTeam.textContent = `${this.currentUser.team} • ${this.currentUser.role}`;
+            userInfoDiv.style.display = 'block';
+            logoutBtn.style.display = 'block';
+
+            logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.logout();
+            });
+        }
+    }
+
+    logout() {
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('authToken');
+        // Log activity before logout
+        AuthManager.logActivityFromPage('logout', `${this.currentUser.name} logged out from storage`);
+        window.location.href = 'auth.html';
     }
 
     loadElements() {
@@ -32,12 +67,18 @@ class StoragePage {
             itemFormSection: document.getElementById('itemFormSection'),
             itemFormTitle: document.getElementById('itemFormTitle'),
             itemForm: document.getElementById('itemForm'),
+            itemBarcode: document.getElementById('itemBarcode'),
             itemName: document.getElementById('itemName'),
             itemSku: document.getElementById('itemSku'),
-            itemPrice: document.getElementById('itemPrice'),
+            itemPricePerCase: document.getElementById('itemPricePerCase'),
+            itemCasesOrdered: document.getElementById('itemCasesOrdered'),
+            itemCountsPerCase: document.getElementById('itemCountsPerCase'),
             itemQuantity: document.getElementById('itemQuantity'),
-            itemMeasurement: document.getElementById('itemMeasurement'),
-            itemServing: document.getElementById('itemServing'),
+            itemUnit: document.getElementById('itemUnit'),
+            itemTotalOzPc: document.getElementById('itemTotalOzPc'),
+            itemServingsNeeded: document.getElementById('itemServingsNeeded'),
+            itemServingsTotal: document.getElementById('itemServingsTotal'),
+            itemNeedToServe: document.getElementById('itemNeedToServe'),
             storageModeAddBtn: document.getElementById('storageModeAddBtn'),
             storageModeInBtn: document.getElementById('storageModeInBtn'),
             storageModeOutBtn: document.getElementById('storageModeOutBtn'),
@@ -211,11 +252,14 @@ class StoragePage {
         }
 
         const headerAliases = new Set([
-            'name', 'itemname', 'product', 'item', 'productname',
-            'sku', 'barcode', 'itemcode', 'productcode',
-            'price', 'cost', 'estimatedpricepercase',
-            'quantity', 'qty', 'totalquantity', 'totalqty', 'stock', 'casesordered', 'totalcounts', 'casecount', 'cases',
-            'measurement', 'unit', 'unitmeasure', 'measure',
+            'name', 'productname', 'product', 'itemname', 'item',
+            'sku', 'skufillin', 'sku_fillin', 'barcode', 'upc', 'ean', 'productbarcode', 'itemcode', 'productcode',
+            'price', 'cost', 'estimatedpricepercase', 'pricepercase',
+            'casesordered', 'caseordered', 'cases', 'casecount', 'totalcases',
+            'totalcountspercase', 'countspercase', 'countpercase',
+            'unit', 'measurement', 'unitmeasure', 'measure',
+            'totalozpc', 'ozpc', 'totalpieces',
+            'servingsneeded', 'servingstotal', 'needtoserve', 'needtoservecount',
             'servingsize', 'servings', 'size',
         ]);
 
@@ -268,16 +312,28 @@ class StoragePage {
             const value = row[rawKey];
             if (['name', 'itemname', 'product', 'item', 'productname'].includes(key)) {
                 normalized.item_name = value.toString().trim();
-            } else if (['sku', 'barcode', 'itemcode', 'productcode'].includes(key)) {
+            } else if (['barcode', 'upc', 'ean', 'productbarcode', 'gs1'].includes(key)) {
+                normalized.barcode = value.toString().trim();
+            } else if (['sku', 'itemcode', 'productcode', 'skufillin', 'sku_fillin'].includes(key)) {
                 normalized.sku = value.toString().trim();
             } else if (['price', 'cost', 'estimatedpricepercase', 'pricepercase'].includes(key)) {
-                normalized.price = parseFloat(value) || 0;
-            } else if (['quantity', 'qty', 'totalquantity', 'totalqty', 'stock', 'casesordered', 'totalcounts', 'casecount', 'cases', 'casequantity'].includes(key)) {
+                normalized.price_per_case = parseFloat(value) || 0;
+            } else if (['casesordered', 'caseordered', 'cases', 'casecount', 'totalcases'].includes(key)) {
+                normalized.cases_ordered = parseInt(value, 10) || 0;
+            } else if (['totalcountspercase', 'totalcountpercase', 'countspercase', 'countpercase'].includes(key)) {
+                normalized.counts_per_case = parseInt(value, 10) || 0;
+            } else if (['unit', 'measurement', 'unitmeasure', 'measure'].includes(key)) {
+                normalized.unit = value.toString().trim();
+            } else if (['totalozpc', 'totaloz', 'ozpc', 'ozperpiece', 'totalpieces'].includes(key)) {
+                normalized.total_oz_pc = value.toString().trim();
+            } else if (['servingsneeded', 'needtoserve', 'needtoservecount'].includes(key)) {
+                normalized.need_to_serve = parseInt(value, 10) || 0;
+            } else if (['servingstotal', 'totalservings'].includes(key)) {
+                normalized.servings_total = parseInt(value, 10) || 0;
+            } else if (['servingsize', 'servings', 'size'].includes(key)) {
+                normalized.servings_needed = parseInt(value, 10) || 0;
+            } else if (['quantity', 'qty', 'totalquantity', 'totalqty', 'stock'].includes(key)) {
                 normalized.total_quantity = parseInt(value, 10) || 0;
-            } else if (['measurement', 'unit', 'unitmeasure', 'measure', 'percase', 'percasevalue'].includes(key)) {
-                normalized.measurement = value.toString().trim();
-            } else if (['servingsize', 'servings', 'size', 'totallbpercase', 'ozperpiece'].includes(key)) {
-                normalized.serving_size = value.toString().trim();
             }
         });
         return normalized;
@@ -293,12 +349,18 @@ class StoragePage {
             rowCount += 1;
             const existing = this.items[item.sku] || null;
             this.items[item.sku] = {
+                barcode: item.barcode || existing?.barcode || '',
                 sku: item.sku,
                 item_name: item.item_name || existing?.item_name || 'Unnamed Item',
-                price: item.price || Number(existing?.price || 0),
+                price_per_case: item.price_per_case || Number(existing?.price_per_case || 0),
+                cases_ordered: item.cases_ordered || Number(existing?.cases_ordered || 0),
+                counts_per_case: item.counts_per_case || Number(existing?.counts_per_case || 0),
                 total_quantity: Number(item.total_quantity || existing?.total_quantity || 0),
-                measurement: item.measurement || existing?.measurement || '',
-                serving_size: item.serving_size || existing?.serving_size || '',
+                unit: item.unit || existing?.unit || '',
+                total_oz_pc: item.total_oz_pc || existing?.total_oz_pc || '',
+                servings_needed: item.servings_needed || Number(existing?.servings_needed || 0),
+                servings_total: item.servings_total || Number(existing?.servings_total || 0),
+                need_to_serve: item.need_to_serve || Number(existing?.need_to_serve || 0),
             };
         });
         this.saveItems();
@@ -313,19 +375,25 @@ class StoragePage {
         this.renderStorageList();
     }
 
-    showManualAddForm(sku = '') {
+    showManualAddForm(sku = '', barcode = '') {
         this.editingSku = null;
         this.elements.itemFormSection.classList.add('show');
         this.elements.itemFormSection.classList.remove('hidden');
         this.elements.itemFormSection.setAttribute('aria-hidden', 'false');
         const modeLabel = this.currentMode === 'check_in' ? 'Check In' : this.currentMode === 'check_out' ? 'Check Out' : 'Add Item';
         this.elements.itemFormTitle.textContent = `${modeLabel} — Family Stock`;
+        this.elements.itemBarcode.value = barcode;
         this.elements.itemSku.value = sku;
         this.elements.itemName.value = '';
-        this.elements.itemPrice.value = 0;
+        this.elements.itemPricePerCase.value = 0;
+        this.elements.itemCasesOrdered.value = 0;
+        this.elements.itemCountsPerCase.value = 0;
         this.elements.itemQuantity.value = this.currentMode === 'check_out' ? 0 : 1;
-        this.elements.itemMeasurement.value = '';
-        this.elements.itemServing.value = '';
+        this.elements.itemUnit.value = '';
+        this.elements.itemTotalOzPc.value = '';
+        this.elements.itemServingsNeeded.value = 0;
+        this.elements.itemServingsTotal.value = 0;
+        this.elements.itemNeedToServe.value = 0;
     }
 
     openScannerPopup() {
@@ -433,19 +501,18 @@ class StoragePage {
         }
 
         this.scanCooldown = true;
-        this.elements.scannerModalStatus.textContent = `Detected: ${code}`;
-        this.elements.detectedSkuText.textContent = `Detected SKU: ${code}`;
+        this.elements.scannerModalStatus.textContent = `Detected barcode: ${code}`;
+        this.elements.detectedSkuText.textContent = `Detected barcode value. Looking up item...`;
 
         const item = this.findItem(code);
         if (item) {
-            this.elements.scannerModalStatus.textContent = `Removing ${item.item_name || code} from storage...`;
-            this.deleteItem(item.sku, false);
-            this.showToast(`Removed ${item.item_name || code} from storage via scan.`);
+            this.showToast(`Found item ${item.item_name}. Opening form with barcode and SKU.`);
             this.closeScannerPopup();
+            this.showEditForm(item.sku);
         } else {
-            this.showToast(`SKU ${code} not found. Open manual entry to add it.`);
-            this.showManualAddForm(code);
+            this.showToast(`Barcode ${code} not found. Open manual entry to add it.`);
             this.closeScannerPopup();
+            this.showManualAddForm('', code);
         }
 
         setTimeout(() => {
@@ -474,12 +541,18 @@ class StoragePage {
         this.elements.itemFormSection.classList.remove('hidden');
         this.elements.itemFormSection.setAttribute('aria-hidden', 'false');
         this.elements.itemFormTitle.textContent = 'Edit Item — Family Stock';
+        this.elements.itemBarcode.value = item.barcode || '';
         this.elements.itemSku.value = item.sku;
         this.elements.itemName.value = item.item_name || '';
-        this.elements.itemPrice.value = item.price ?? 0;
+        this.elements.itemPricePerCase.value = item.price_per_case ?? 0;
+        this.elements.itemCasesOrdered.value = item.cases_ordered ?? 0;
+        this.elements.itemCountsPerCase.value = item.counts_per_case ?? 0;
         this.elements.itemQuantity.value = item.total_quantity ?? 0;
-        this.elements.itemMeasurement.value = item.measurement || '';
-        this.elements.itemServing.value = item.serving_size || '';
+        this.elements.itemUnit.value = item.unit || '';
+        this.elements.itemTotalOzPc.value = item.total_oz_pc || '';
+        this.elements.itemServingsNeeded.value = item.servings_needed ?? 0;
+        this.elements.itemServingsTotal.value = item.servings_total ?? 0;
+        this.elements.itemNeedToServe.value = item.need_to_serve ?? 0;
     }
 
     handleItemSubmit(event) {
@@ -489,11 +562,17 @@ class StoragePage {
             this.showToast('SKU is required.');
             return;
         }
+        const barcode = this.elements.itemBarcode.value.trim();
         const itemName = this.elements.itemName.value.trim() || 'Unnamed Item';
-        const price = parseFloat(this.elements.itemPrice.value) || 0;
+        const pricePerCase = parseFloat(this.elements.itemPricePerCase.value) || 0;
+        const casesOrdered = Math.max(parseInt(this.elements.itemCasesOrdered.value, 10) || 0, 0);
+        const countsPerCase = Math.max(parseInt(this.elements.itemCountsPerCase.value, 10) || 0, 0);
         const quantity = Math.max(parseInt(this.elements.itemQuantity.value, 10) || 0, 0);
-        const measurement = this.elements.itemMeasurement.value.trim();
-        const servingSize = this.elements.itemServing.value.trim();
+        const unit = this.elements.itemUnit.value.trim();
+        const totalOzPc = this.elements.itemTotalOzPc.value.trim();
+        const servingsNeeded = Math.max(parseInt(this.elements.itemServingsNeeded.value, 10) || 0, 0);
+        const servingsTotal = Math.max(parseInt(this.elements.itemServingsTotal.value, 10) || 0, 0);
+        const needToServe = Math.max(parseInt(this.elements.itemNeedToServe.value, 10) || 0, 0);
 
         if (this.editingSku) {
             const originalSku = this.editingSku;
@@ -501,12 +580,18 @@ class StoragePage {
                 delete this.items[originalSku];
             }
             this.items[sku] = {
+                barcode,
                 sku,
                 item_name: itemName,
-                price,
+                price_per_case: pricePerCase,
+                cases_ordered: casesOrdered,
+                counts_per_case: countsPerCase,
                 total_quantity: quantity,
-                measurement,
-                serving_size: servingSize,
+                unit,
+                total_oz_pc: totalOzPc,
+                servings_needed: servingsNeeded,
+                servings_total: servingsTotal,
+                need_to_serve: needToServe,
             };
             this.editingSku = null;
             this.saveItems();
@@ -517,7 +602,6 @@ class StoragePage {
 
         const existing = this.items[sku] || null;
         let totalQuantity = quantity;
-
         if (this.currentMode === 'check_in') {
             totalQuantity = (existing?.total_quantity || 0) + quantity;
         } else if (this.currentMode === 'check_out') {
@@ -527,14 +611,25 @@ class StoragePage {
         }
 
         this.items[sku] = {
+            barcode,
             sku,
             item_name: itemName,
-            price,
+            price_per_case: pricePerCase,
+            cases_ordered: casesOrdered,
+            counts_per_case: countsPerCase,
             total_quantity: totalQuantity,
-            measurement,
-            serving_size: servingSize,
+            unit,
+            total_oz_pc: totalOzPc,
+            servings_needed: servingsNeeded,
+            servings_total: servingsTotal,
+            need_to_serve: needToServe,
         };
         this.saveItems();
+        
+        // Log activity
+        const action = this.currentMode === 'check_out' ? 'checked out' : this.currentMode === 'check_in' ? 'checked in' : 'saved';
+        AuthManager.logActivityFromPage('inventory_' + this.currentMode, `${action.toUpperCase()} ${quantity} units of SKU ${sku} (${itemName})`);
+        
         this.hideItemForm();
         this.showToast(`${this.currentMode === 'check_out' ? 'Checked out' : this.currentMode === 'check_in' ? 'Checked in' : 'Saved'} item ${sku}.`);
     }
@@ -543,7 +638,7 @@ class StoragePage {
         const hasFilter = this.elements.filterInput.value.trim() !== '';
         const rows = hasFilter ? this.filteredItems : Object.values(this.items);
         if (rows.length === 0) {
-            this.elements.storageTableBody.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center; padding: 24px;">No stored inventory yet. Upload a file or add items to begin.</td></tr>';
+            this.elements.storageTableBody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center; padding: 24px;">No stored inventory yet. Upload a file or add items to begin.</td></tr>';
             return;
         }
 
@@ -551,10 +646,14 @@ class StoragePage {
             <tr>
                 <td>${item.item_name}</td>
                 <td>${item.sku}</td>
-                <td>${item.price}</td>
-                <td>${item.total_quantity}</td>
-                <td>${item.measurement || '-'}</td>
-                <td>${item.serving_size || '-'}</td>
+                <td>${item.barcode || '-'}</td>
+                <td>${item.price_per_case ?? 0}</td>
+                <td>${item.cases_ordered ?? 0}</td>
+                <td>${item.counts_per_case ?? 0}</td>
+                <td>${item.total_quantity ?? 0}</td>
+                <td>${item.unit || '-'}</td>
+                <td>${item.total_oz_pc || '-'}</td>
+                <td>${item.need_to_serve ?? 0}</td>
                 <td>
                     <div class="quick-actions">
                         <input class="quick-qty-input" type="number" min="1" step="1" value="1" data-sku="${item.sku}">
@@ -631,6 +730,10 @@ class StoragePage {
         this.lastRemovedItem = { sku, item: { ...item } };
         delete this.items[sku];
         this.saveItems();
+        
+        // Log activity
+        AuthManager.logActivityFromPage('remove_item', `Removed SKU ${sku} (${item.item_name}) from storage`);
+        
         this.handleFilter();
         this.toggleUndoButton(true);
         if (askConfirm) {

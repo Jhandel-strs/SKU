@@ -3,20 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ApparelEase Smart Inventory</title>
+    <title>SKU Inventory Tracker</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="inventory-app">
         <header class="app-header">
             <div>
-                <p class="tagline">ApparelEase</p>
-                <h1>DTI Inventory System</h1>
-                <p class="subtext">Manage stock with DTI, Static Functional, and Storage modes. Add or reduce items, upload inventory, and calculate values quickly.</p>
+                <p class="tagline">SKU Inventory Tracker</p>
+                <h1>Inventory Management System</h1>
+                <p class="subtext">Track and manage your inventory by SKU. Upload data, scan items, manage stock levels, and calculate inventory values efficiently.</p>
             </div>
             <div class="header-actions">
+                <div id="userInfo" style="display: none;">
+                    <span class="status-pill">
+                        👤 <span id="currentUserName"></span> 
+                        <br>
+                        <small id="currentUserTeam"></small>
+                    </span>
+                </div>
                 <span class="status-pill" id="storageStatus">Local storage enabled</span>
                 <button class="btn ghost" id="clearStorageBtn">Reset Saved Items</button>
+                <a href="auth.html" class="btn ghost" id="logoutBtn" style="display: none;">Logout</a>
             </div>
         </header>
 
@@ -79,22 +87,46 @@
         <section class="calculator-panel card">
             <div class="review-header">
                 <div>
-                    <h2>Quick Calculator</h2>
-                    <p class="muted">Calculate totals for quantity, price, and stock value.</p>
+                    <h2>Calculator</h2>
+                    <p class="muted">Estimate totals for cases, counts, ounces, and servings.</p>
                 </div>
             </div>
             <div class="form-grid calculator-grid">
                 <label class="form-group">
-                    Quantity
-                    <input type="number" id="calcQty" value="1" min="0">
+                    Cases Ordered
+                    <input type="number" id="calcCases" value="0" min="0">
                 </label>
                 <label class="form-group">
-                    Price per Unit
-                    <input type="number" id="calcPrice" value="0" min="0" step="0.01">
+                    Price per Case
+                    <input type="number" id="calcPricePerCase" value="0" min="0" step="0.01">
+                </label>
+                <label class="form-group">
+                    Counts per Case
+                    <input type="number" id="calcCountsPerCase" value="0" min="0">
+                </label>
+                <label class="form-group">
+                    OZ per Count
+                    <input type="number" id="calcOzPerCount" value="0" min="0" step="0.01">
+                </label>
+                <label class="form-group">
+                    Servings per Count
+                    <input type="number" id="calcServingsPerCount" value="0" min="0" step="0.1">
+                </label>
+                <label class="form-group">
+                    Total Counts Inventory
+                    <input type="text" id="calcTotalCounts" readonly>
                 </label>
                 <label class="form-group">
                     Total Value
-                    <input type="text" id="calcResult" readonly>
+                    <input type="text" id="calcTotalValue" readonly>
+                </label>
+                <label class="form-group">
+                    Total OZ Inventory
+                    <input type="text" id="calcTotalOz" readonly>
+                </label>
+                <label class="form-group">
+                    Estimated Servings
+                    <input type="text" id="calcTotalServings" readonly>
                 </label>
             </div>
             <div class="form-actions">
@@ -193,28 +225,44 @@
             <form id="itemForm">
                 <div class="form-grid">
                     <label class="form-group">
-                        Item Name
-                        <input type="text" id="itemName" required>
+                        Barcode
+                        <input type="text" id="itemBarcode" placeholder="Scanned barcode value">
                     </label>
                     <label class="form-group">
                         SKU
                         <input type="text" id="itemSku" required>
                     </label>
                     <label class="form-group">
-                        Price
-                        <input type="number" id="itemPrice" step="0.01" min="0" required>
+                        Item Name
+                        <input type="text" id="itemName" required>
                     </label>
                     <label class="form-group">
-                        Total Quantity
+                        Price per Case
+                        <input type="number" id="itemPricePerCase" step="0.01" min="0" required>
+                    </label>
+                    <label class="form-group">
+                        Cases Ordered
+                        <input type="number" id="itemCasesOrdered" min="0" required>
+                    </label>
+                    <label class="form-group">
+                        Counts per Case
+                        <input type="number" id="itemCountsPerCase" min="0" required>
+                    </label>
+                    <label class="form-group">
+                        Total Counts
                         <input type="number" id="itemQuantity" min="0" required>
                     </label>
                     <label class="form-group">
-                        Measurement
-                        <input type="text" id="itemMeasurement" placeholder="pieces, kg, liters">
+                        Unit
+                        <input type="text" id="itemUnit" placeholder="pieces, sets, kg">
                     </label>
                     <label class="form-group">
-                        Serving Size
-                        <input type="text" id="itemServing" placeholder="e.g. 1 piece">
+                        OZ per Count
+                        <input type="number" id="itemTotalOzPc" step="0.01" min="0" placeholder="e.g. 0.5">
+                    </label>
+                    <label class="form-group">
+                        Servings per Count
+                        <input type="number" id="itemServingsPerCount" step="0.1" min="0" placeholder="e.g. 1">
                     </label>
                 </div>
                 <div class="form-actions">

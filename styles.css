@@ -352,15 +352,34 @@ input[type="search"] {
 
 .table-wrapper {
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: 600px;
     margin-top: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    border-radius: 16px;
-    overflow: hidden;
     background: rgba(15, 23, 42, 0.9);
+    table-layout: fixed;
+}
+
+table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+table th {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+table td {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 tbody tr:hover {
@@ -386,6 +405,11 @@ th, td {
     text-align: left;
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
     color: #e2e8f0;
+    min-width: 100px;
+}
+
+td:last-child {
+    min-width: 80px;
 }
 
 .cards-grid {

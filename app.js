@@ -1,5 +1,12 @@
 class InventoryApp {
     constructor() {
+        // Check if user is authenticated
+        this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
+        if (!this.currentUser) {
+            window.location.href = 'auth.html';
+            return;
+        }
+
         this.items = {};
         this.mode = 'check_in';
         this.reviewRecords = [];
@@ -14,11 +21,39 @@ class InventoryApp {
         this.scanHistory = [];
         this.transactions = [];
         this.loadElements();
+        this.displayUserInfo();
         this.bindEvents();
         this.loadItems();
         this.setMode(this.mode, false);
         this.loadTransactions();
         this.updateSummary();
+    }
+
+    displayUserInfo() {
+        const userInfoDiv = document.getElementById('userInfo');
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserTeam = document.getElementById('currentUserTeam');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        if (this.currentUser && userInfoDiv) {
+            currentUserName.textContent = this.currentUser.name;
+            currentUserTeam.textContent = `${this.currentUser.team} • ${this.currentUser.role}`;
+            userInfoDiv.style.display = 'block';
+            logoutBtn.style.display = 'block';
+
+            logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.logout();
+            });
+        }
+    }
+
+    logout() {
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('authToken');
+        // Log activity before logout
+        AuthManager.logActivityFromPage('logout', `${this.currentUser.name} logged out from inventory system`);
+        window.location.href = 'auth.html';
     }
 
     loadElements() {
@@ -47,21 +82,31 @@ class InventoryApp {
             itemFormSection: document.getElementById('itemFormSection'),
             itemFormTitle: document.getElementById('itemFormTitle'),
             itemForm: document.getElementById('itemForm'),
+            itemBarcode: document.getElementById('itemBarcode'),
             itemName: document.getElementById('itemName'),
             itemSku: document.getElementById('itemSku'),
-            itemPrice: document.getElementById('itemPrice'),
+            itemPricePerCase: document.getElementById('itemPricePerCase'),
+            itemCasesOrdered: document.getElementById('itemCasesOrdered'),
+            itemCountsPerCase: document.getElementById('itemCountsPerCase'),
             itemQuantity: document.getElementById('itemQuantity'),
-            itemMeasurement: document.getElementById('itemMeasurement'),
-            itemServing: document.getElementById('itemServing'),
+            itemUnit: document.getElementById('itemUnit'),
+            itemTotalOzPc: document.getElementById('itemTotalOzPc'),
+            itemServingsPerCount: document.getElementById('itemServingsPerCount'),
             cancelItemBtn: document.getElementById('cancelItemBtn'),
             saveOpenStorageBtn: document.getElementById('saveOpenStorageBtn'),
             reviewSection: document.getElementById('reviewSection'),
             reviewList: document.getElementById('reviewList'),
             exportReviewBtn: document.getElementById('exportReviewBtn'),
             clearStorageBtn: document.getElementById('clearStorageBtn'),
-            calcQty: document.getElementById('calcQty'),
-            calcPrice: document.getElementById('calcPrice'),
-            calcResult: document.getElementById('calcResult'),
+            calcCases: document.getElementById('calcCases'),
+            calcPricePerCase: document.getElementById('calcPricePerCase'),
+            calcCountsPerCase: document.getElementById('calcCountsPerCase'),
+            calcOzPerCount: document.getElementById('calcOzPerCount'),
+            calcServingsPerCount: document.getElementById('calcServingsPerCount'),
+            calcTotalCounts: document.getElementById('calcTotalCounts'),
+            calcTotalValue: document.getElementById('calcTotalValue'),
+            calcTotalOz: document.getElementById('calcTotalOz'),
+            calcTotalServings: document.getElementById('calcTotalServings'),
             calcBtn: document.getElementById('calcBtn'),
             calcResetBtn: document.getElementById('calcResetBtn'),
             userIdInput: document.getElementById('userIdInput'),
@@ -99,22 +144,45 @@ class InventoryApp {
         this.elements.calcResetBtn.addEventListener('click', () => this.resetCalculator());
         this.elements.addTransactionBtn.addEventListener('click', () => this.addTransaction());
         this.elements.clearTransactionBtn.addEventListener('click', () => this.clearTransactions());
-        [this.elements.calcQty, this.elements.calcPrice].forEach((input) => {
+        [
+            this.elements.calcCases,
+            this.elements.calcPricePerCase,
+            this.elements.calcCountsPerCase,
+            this.elements.calcOzPerCount,
+            this.elements.calcServingsPerCount,
+        ].forEach((input) => {
             input.addEventListener('input', () => this.calculateValue());
         });
     }
 
     calculateValue() {
-        const quantity = Number(this.elements.calcQty.value) || 0;
-        const price = Number(this.elements.calcPrice.value) || 0;
-        const total = quantity * price;
-        this.elements.calcResult.value = total.toFixed(2);
+        const cases = Number(this.elements.calcCases.value) || 0;
+        const pricePerCase = Number(this.elements.calcPricePerCase.value) || 0;
+        const countsPerCase = Number(this.elements.calcCountsPerCase.value) || 0;
+        const ozPerCount = Number(this.elements.calcOzPerCount.value) || 0;
+        const servingsPerCount = Number(this.elements.calcServingsPerCount.value) || 0;
+
+        const totalCounts = cases * countsPerCase;
+        const totalValue = cases * pricePerCase;
+        const totalOz = totalCounts * ozPerCount;
+        const totalServings = totalCounts * servingsPerCount;
+
+        this.elements.calcTotalCounts.value = totalCounts.toFixed(0);
+        this.elements.calcTotalValue.value = totalValue.toFixed(2);
+        this.elements.calcTotalOz.value = totalOz.toFixed(2);
+        this.elements.calcTotalServings.value = totalServings.toFixed(1);
     }
 
     resetCalculator() {
-        this.elements.calcQty.value = 1;
-        this.elements.calcPrice.value = 0;
-        this.elements.calcResult.value = '';
+        this.elements.calcCases.value = 0;
+        this.elements.calcPricePerCase.value = 0;
+        this.elements.calcCountsPerCase.value = 0;
+        this.elements.calcOzPerCount.value = 0;
+        this.elements.calcServingsPerCount.value = 0;
+        this.elements.calcTotalCounts.value = '';
+        this.elements.calcTotalValue.value = '';
+        this.elements.calcTotalOz.value = '';
+        this.elements.calcTotalServings.value = '';
     }
 
     loadItems() {
@@ -180,16 +248,21 @@ class InventoryApp {
     }
 
     addTransaction() {
-        const userId = this.elements.userIdInput.value.trim() || 'Unknown';
+        const userId = this.currentUser.id || this.elements.userIdInput.value.trim() || 'Unknown';
+        const userName = this.currentUser.name || 'Unknown';
         const action = this.elements.actionTypeSelect.value;
         const note = this.elements.transactionNoteInput.value.trim() || 'No details';
 
         this.transactions.unshift({
             userId,
+            userName,
             action,
             note,
             time: new Date().toLocaleString(),
         });
+
+        // Log activity
+        AuthManager.logActivityFromPage('transaction', `${action}: ${note}`);
 
         if (this.transactions.length > 15) {
             this.transactions.length = 15;
@@ -199,7 +272,7 @@ class InventoryApp {
         this.renderTransactions();
         this.elements.userIdInput.value = '';
         this.elements.transactionNoteInput.value = '';
-        this.showToast('Transaction recorded.');
+        this.showToast('Transaction recorded by ' + userName);
     }
 
     renderTransactions() {
@@ -339,12 +412,16 @@ class InventoryApp {
             rowCount += 1;
             const existing = this.items[item.sku] || null;
             this.items[item.sku] = {
+                barcode: item.barcode || existing?.barcode || '',
                 sku: item.sku,
                 item_name: item.item_name || existing?.item_name || 'Unnamed Item',
-                price: item.price || Number(existing?.price || 0),
+                price_per_case: item.price_per_case || Number(existing?.price_per_case || 0),
+                cases_ordered: item.cases_ordered || Number(existing?.cases_ordered || 0),
+                counts_per_case: item.counts_per_case || Number(existing?.counts_per_case || 0),
                 total_quantity: Number(item.total_quantity || existing?.total_quantity || 0),
-                measurement: item.measurement || existing?.measurement || '',
-                serving_size: item.serving_size || existing?.serving_size || '',
+                unit: item.unit || existing?.unit || '',
+                total_oz_pc: item.total_oz_pc || existing?.total_oz_pc || '',
+                servings_per_count: item.servings_per_count || Number(existing?.servings_per_count || 0),
             };
         });
         this.saveItems();
@@ -413,16 +490,24 @@ class InventoryApp {
             const value = row[rawKey];
             if (['name', 'itemname', 'product', 'item', 'productname'].includes(key)) {
                 normalized.item_name = value.toString().trim();
-            } else if (['sku', 'barcode', 'itemcode', 'productcode', 'skufillin'].includes(key)) {
+            } else if (['barcode', 'upc', 'ean', 'itemcode', 'productcode', 'skufillin', 'sku_fillin'].includes(key)) {
+                normalized.barcode = value.toString().trim();
+            } else if (['sku', 'itemcode', 'productcode', 'skufillin', 'sku_fillin'].includes(key)) {
                 normalized.sku = value.toString().trim();
             } else if (['price', 'cost', 'estimatedpricepercase', 'pricepercase'].includes(key)) {
-                normalized.price = parseFloat(value) || 0;
-            } else if (['quantity', 'qty', 'totalquantity', 'totalqty', 'stock', 'casesordered', 'totalcounts', 'casecount', 'cases', 'casequantity'].includes(key)) {
+                normalized.price_per_case = parseFloat(value) || 0;
+            } else if (['casesordered', 'caseordered', 'cases', 'casecount', 'totalcases'].includes(key)) {
+                normalized.cases_ordered = parseInt(value, 10) || 0;
+            } else if (['totalcountspercase', 'countspercase', 'countpercase'].includes(key)) {
+                normalized.counts_per_case = parseInt(value, 10) || 0;
+            } else if (['measurement', 'unit', 'unitmeasure', 'measure'].includes(key)) {
+                normalized.unit = value.toString().trim();
+            } else if (['totalozpc', 'ozpc', 'ozpercount', 'ozperpiece'].includes(key)) {
+                normalized.total_oz_pc = value.toString().trim();
+            } else if (['servingspercount', 'servingsperpiece', 'servingsperunit'].includes(key)) {
+                normalized.servings_per_count = parseFloat(value) || 0;
+            } else if (['quantity', 'qty', 'totalquantity', 'totalqty', 'stock'].includes(key)) {
                 normalized.total_quantity = parseInt(value, 10) || 0;
-            } else if (['measurement', 'unit', 'unitmeasure', 'measure', 'percase', 'percasevalue'].includes(key)) {
-                normalized.measurement = value.toString().trim();
-            } else if (['servingsize', 'servings', 'size', 'totallbpercase', 'ozperpiece'].includes(key)) {
-                normalized.serving_size = value.toString().trim();
             }
         });
         return normalized;
@@ -622,12 +707,16 @@ class InventoryApp {
         this.elements.reviewSection.classList.add('hidden');
         const modeText = this.mode === 'check_in' ? 'Check In' : 'Check Out';
         this.elements.itemFormTitle.textContent = item ? `${modeText} — ${item.item_name}` : `${modeText} — Add New Item`;
+        this.elements.itemBarcode.value = item?.barcode || '';
         this.elements.itemSku.value = item?.sku || code;
         this.elements.itemName.value = item?.item_name || '';
-        this.elements.itemPrice.value = item?.price || 0;
+        this.elements.itemPricePerCase.value = item?.price_per_case || 0;
+        this.elements.itemCasesOrdered.value = item?.cases_ordered || 0;
+        this.elements.itemCountsPerCase.value = item?.counts_per_case || 0;
         this.elements.itemQuantity.value = this.mode === 'check_in' ? 1 : item?.total_quantity || 0;
-        this.elements.itemMeasurement.value = item?.measurement || '';
-        this.elements.itemServing.value = item?.serving_size || '';
+        this.elements.itemUnit.value = item?.unit || '';
+        this.elements.itemTotalOzPc.value = item?.total_oz_pc || '';
+        this.elements.itemServingsPerCount.value = item?.servings_per_count || 0;
         // focus and smooth scroll for convenience on mobile
         setTimeout(() => {
             try {
@@ -649,11 +738,15 @@ class InventoryApp {
             this.showToast('SKU is required.');
             return;
         }
+        const barcode = this.elements.itemBarcode.value.trim();
         const name = this.elements.itemName.value.trim() || 'Unnamed Item';
-        const price = parseFloat(this.elements.itemPrice.value) || 0;
-        const quantity = parseInt(this.elements.itemQuantity.value, 10) || 0;
-        const measurement = this.elements.itemMeasurement.value.trim();
-        const serving = this.elements.itemServing.value.trim();
+        const pricePerCase = parseFloat(this.elements.itemPricePerCase.value) || 0;
+        const casesOrdered = Math.max(parseInt(this.elements.itemCasesOrdered.value, 10) || 0, 0);
+        const countsPerCase = Math.max(parseInt(this.elements.itemCountsPerCase.value, 10) || 0, 0);
+        const quantity = Math.max(parseInt(this.elements.itemQuantity.value, 10) || 0, 0);
+        const unit = this.elements.itemUnit.value.trim();
+        const totalOzPc = this.elements.itemTotalOzPc.value.trim();
+        const servingsPerCount = parseFloat(this.elements.itemServingsPerCount.value) || 0;
         const existing = this.items[sku] || null;
         let totalQuantity = quantity;
 
@@ -664,12 +757,16 @@ class InventoryApp {
         }
 
         this.items[sku] = {
+            barcode,
             sku,
             item_name: name,
-            price,
+            price_per_case: pricePerCase,
+            cases_ordered: casesOrdered,
+            counts_per_case: countsPerCase,
             total_quantity: totalQuantity,
-            measurement,
-            serving_size: serving,
+            unit,
+            total_oz_pc: totalOzPc,
+            servings_per_count: servingsPerCount,
         };
         this.saveItems();
         this.updateSummary();
@@ -685,11 +782,15 @@ class InventoryApp {
             this.showToast('SKU is required.');
             return;
         }
+        const barcode = this.elements.itemBarcode.value.trim();
         const name = this.elements.itemName.value.trim() || 'Unnamed Item';
-        const price = parseFloat(this.elements.itemPrice.value) || 0;
-        const quantity = parseInt(this.elements.itemQuantity.value, 10) || 0;
-        const measurement = this.elements.itemMeasurement.value.trim();
-        const serving = this.elements.itemServing.value.trim();
+        const pricePerCase = parseFloat(this.elements.itemPricePerCase.value) || 0;
+        const casesOrdered = Math.max(parseInt(this.elements.itemCasesOrdered.value, 10) || 0, 0);
+        const countsPerCase = Math.max(parseInt(this.elements.itemCountsPerCase.value, 10) || 0, 0);
+        const quantity = Math.max(parseInt(this.elements.itemQuantity.value, 10) || 0, 0);
+        const unit = this.elements.itemUnit.value.trim();
+        const totalOzPc = this.elements.itemTotalOzPc.value.trim();
+        const servingsPerCount = parseFloat(this.elements.itemServingsPerCount.value) || 0;
         const existing = this.items[sku] || null;
         let totalQuantity = quantity;
 
@@ -700,12 +801,16 @@ class InventoryApp {
         }
 
         this.items[sku] = {
+            barcode,
             sku,
             item_name: name,
-            price,
+            price_per_case: pricePerCase,
+            cases_ordered: casesOrdered,
+            counts_per_case: countsPerCase,
             total_quantity: totalQuantity,
-            measurement,
-            serving_size: serving,
+            unit,
+            total_oz_pc: totalOzPc,
+            servings_per_count: servingsPerCount,
         };
         this.saveItems();
         this.updateSummary();
